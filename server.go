@@ -5,8 +5,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -93,7 +96,31 @@ func (as *ActiveServer) RunScheduler() {
 	as.Scheduler.Run(as.DB)
 }
 
+func (as *ActiveServer) Terminate() {
+	// Termination request is being handles here
+	// Proper clean up goes here
+	as.Scheduler.Stop()
+	as.DB.Close()
+	log.Println("ActiveServer has terminated")
+	os.Exit(1)
+}
+
+func (as *ActiveServer) RegisterHandlers() {
+	go func() {
+		sigs := make(chan os.Signal, 1)
+		defer close(sigs)
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case <-sigs:
+			as.Terminate()
+		case <-as.Scheduler.done:
+			return
+		}
+	}()
+}
+
 func (as *ActiveServer) Run() {
+	as.RegisterHandlers()
 	// Create and run a new scheduler
 	as.NewScheduler()
 	as.RunScheduler()
@@ -103,5 +130,6 @@ func (as *ActiveServer) Run() {
 	defer as.DB.Close()
 	http.HandleFunc("/:resource_id", as.UpdateResource)
 	http.HandleFunc("/dealers/:resource_id", as.GetResource)
+	log.Println("Active server is live")
 	log.Fatal(http.ListenAndServe("0.0.0.0:"+strconv.Itoa(int(as.Port)), nil))
 }

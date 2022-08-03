@@ -33,6 +33,48 @@ func (db *Database) Update(m map[string]time.Time) {
 	stmt.Close()
 }
 
+func (db *Database) CreateTable(table string) (status bool) {
+	stmt := `CREATE TABLE $1 (
+				id SERIAL PRIVATE KEY,
+				resource_id TEXT NOT NULL,
+				ttl TIMESTAMP NOT NULL
+			);`
+	_, err := db.database.Exec(stmt, table)
+	if err == nil {
+		status = true
+	}
+	return
+}
+
+func (db *Database) DropTable(table string) (status bool) {
+	stmt := fmt.Sprintf("DROP TABLE IF EXISTS %s;", table)
+	_, err := db.database.Exec(stmt)
+	if err == nil {
+		status = true
+	}
+	return
+}
+
+func (db *Database) TableExists(table string) (exists bool) {
+	tbl, _ := db.database.Query(`SELECT COUNT(table_name)
+		FROM
+			information_schema.tables
+		WHERE
+			table_schema LIKE 'public' AND
+			table_type LIKE 'BASE TABLE' AND
+			table_name = $1;`, table)
+	defer tbl.Close()
+	count := 0
+	for tbl.Next() {
+		tbl.Scan(&count)
+		break
+	}
+	if count == 1 {
+		exists = true
+	}
+	return
+}
+
 func (db *Database) Select(resource_id string) time.Time {
 	// query
 	rows, _ := db.database.Query("SELECT ttl FROM active WHERE resource_id = $1", resource_id)
